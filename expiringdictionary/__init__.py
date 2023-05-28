@@ -24,6 +24,10 @@ class ExpiringDictionary(object):
         else:
             return 0
 
+    async def blank_loop(self):
+        for i in [0]:
+            yield False
+
     async def keys(self):
         return list(self.dict.keys())
 
@@ -31,7 +35,8 @@ class ExpiringDictionary(object):
         if key not in self.dict:
             self.dict[key]=1
             self.rl[key]=amount
-            yield False
+            async for i in self.blank_loop():
+                yield i 
             await asyncio.sleep(bucket)
             if key in self.dict:
                 self.dict.pop(key)
