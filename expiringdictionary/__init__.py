@@ -1,10 +1,11 @@
 import asyncio,datetime,time
 from typing import Any
 
-class ExpiringDictionary(object):
+class ExpiringDictionary:
     def __init__(self):
         self.dict={}
         self.rl={}
+        self.delete={}
 
     async def set(self,key:str,value:Any,expiration:int=60):
         self.dict[key]=value
@@ -24,25 +25,26 @@ class ExpiringDictionary(object):
         else:
             return 0
 
-    async def blank_loop(self):
-        for i in [0]:
-            yield False
-
     async def keys(self):
         return list(self.dict.keys())
+
+    async def do_delete(self,key):
+       self.dict.pop(key)
+       self.delete[key]['last']=int(datetime.datetime.now().timestamp())
 
     async def ratelimit(self,key:str,amount:int,bucket:int=60):
         if key not in self.dict:
             self.dict[key]=1
             self.rl[key]=amount
-            async for i in self.blank_loop():
-                yield i 
-            await asyncio.sleep(bucket)
-            if key in self.dict:
-                self.dict.pop(key)
-                self.rl.pop(key)
+            if key not in self.delete:
+                self.delete[key]={'bucket':bucket,'last':int(datetime.datetime.now().timestamp())}
+            return False
         else:
             try:
+                if self.delete[key]['last'] + bucket <= int(datetime.datetime.now().timestamp()):
+                    self.dict.pop(key)
+                    self.delete[key]['last']=int(datetime.datetime.now().timestamp())
+                    self.dict[key]=0
                 self.dict[key]+=1
                 if self.dict[key] >= self.rl[key]:
                     return True
