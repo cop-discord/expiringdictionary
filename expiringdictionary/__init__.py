@@ -15,6 +15,7 @@ class ExpiringDictionary:
 
     async def delete(self,key:str,value:Any):
         if key in self.dict:
+			self.dict.pop(key)
             return 1
         else:
             return 0
