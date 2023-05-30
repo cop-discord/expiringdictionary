@@ -36,6 +36,20 @@ class ExpiringDictionary:
        self.dict.pop(key)
        self.delete[key]['last']=int(datetime.datetime.now().timestamp())
 
+    def is_ratelimited(self,key:str):
+        if key in self.dict:
+            if self.dict[key] >= self.rl[key]: return True
+        return False
+
+    def time_remaining(self,key:str):
+        if key in self.dict and key in self.delete:
+            if not self.dict[key] >= self.rl[key]:
+                return 0
+            remaining=(self.delete[key]['last']+self.delete[key]['bucket'])-int(datetime.datetime.now().timestamp())
+            return remaining
+        else:
+            return 0
+
     async def ratelimit(self,key:str,amount:int,bucket:int=60):
         if key not in self.dict:
             self.dict[key]=1
