@@ -1,72 +1,77 @@
-import asyncio,datetime,time
-from typing import Any
+import asyncio
+from typing import (
+    Any,
+    Dict,
+    List,
+    Union,
+    Optional
+)
+import datetime
 
 class ExpiringDictionary:
-    def __init__(self):
-        self.dict={}
-        self.rl={}
-        self.delete={}
+    def __init__(self) -> None:
+        self.dict: Dict[str, Any] = {}
+        self.rl: Dict[str, int] = {}
+        self.delete: Dict[str, Dict[str, Union[int, int]]] = {}
 
-    async def do_expiration(self,key:str,expiration:int):
+    async def do_expiration(
+        self, key: str, expiration: int
+    ) -> None:
         await asyncio.sleep(expiration)
-        if key in self.dict: self.dict.pop(key)
+        self.dict.pop(key, None)
 
-    async def set(self,key:str,value:Any,expiration:int=60):
-        self.dict[key]=value
-        asyncio.ensure_future(self.do_expiration(key,expiration))
+    async def set(
+        self, key: str, value: Any, expiration: int = 60
+    ) -> int:
+        self.dict[key] = value
+        asyncio.ensure_future(self.do_expiration(key, expiration))
         return 1
 
-    async def delete(self,key:str,value:Any):
-        if key in self.dict:
-            self.dict.pop(key)
-            return 1
-        else:
-            return 0
+    async def delete(
+        self, key: str
+    ) -> int:
+        deleted_count = self.dict.pop(key, 0)
+        return bool(deleted_count)
 
-    async def get(self,key:str):
-        if key in self.dict:
-            return self.dict[key]
-        else:
-            return 0
+    async def get(
+        self, key: str
+    ) -> Any:
+        return self.dict.get(key, 0)
 
-    async def keys(self):
+    async def keys(self) -> List[str]:
         return list(self.dict.keys())
 
-    async def do_delete(self,key):
-       self.dict.pop(key)
-       self.delete[key]['last']=int(datetime.datetime.now().timestamp())
+    async def do_delete(
+        self, key: str
+    ) -> None:
+        self.dict.pop(key, None)
+        self.delete[key] = {'last': int(datetime.datetime.now().timestamp())}
 
-    def is_ratelimited(self,key:str):
-        if key in self.dict:
-            if self.dict[key] >= self.rl[key]: return True
-        return False
+    def is_ratelimited(
+        self, key: str
+    ) -> bool:
+        return self.dict.get(key, 0) >= self.rl.get(key, 0)
 
-    def time_remaining(self,key:str):
-        if key in self.dict and key in self.delete:
-            if not self.dict[key] >= self.rl[key]:
-                return 0
-            remaining=(self.delete[key]['last']+self.delete[key]['bucket'])-int(datetime.datetime.now().timestamp())
-            return remaining
-        else:
-            return 0
+    def time_remaining(
+        self, key: str
+    ) -> int:
+        last = self.delete.get(key, {}).get('last', 0)
+        remaining = (last + self.delete.get(key, {}).get('bucket', 60)
+                     ) - int(datetime.datetime.now().timestamp())
+        return max(remaining, 0) if key in self.dict and self.dict[key] >= self.rl.get(key, 0) else 0
 
-    async def ratelimit(self,key:str,amount:int,bucket:int=60):
-        if key not in self.dict:
-            self.dict[key]=1
-            self.rl[key]=amount
-            if key not in self.delete:
-                self.delete[key]={'bucket':bucket,'last':int(datetime.datetime.now().timestamp())}
-            return False
-        else:
-            try:
-                if self.delete[key]['last'] + bucket <= int(datetime.datetime.now().timestamp()):
-                    self.dict.pop(key)
-                    self.delete[key]['last']=int(datetime.datetime.now().timestamp())
-                    self.dict[key]=0
-                self.dict[key]+=1
-                if self.dict[key] >= self.rl[key]:
-                    return True
-                else:
-                    return False
-            except:
-                return await self.ratelimit(key,amount,bucket)
+    async def ratelimit(
+        self, key: str, amount: int, bucket: int = 60
+    ) -> bool:
+        self.dict.setdefault(key, 0)
+        self.rl.setdefault(key, amount)
+        self.delete.setdefault(key, {'bucket': bucket, 'last': 0})
+
+        last, now = self.delete[key]['last'], int(
+            datetime.datetime.now().timestamp())
+        if last + bucket <= now:
+            self.dict.pop(key, None)
+            self.delete[key]['last'], self.dict[key] = now, 0
+
+        self.dict[key] = self.dict.get(key, 0) + 1
+        return self.dict[key] >= self.rl.get(key, 0)
